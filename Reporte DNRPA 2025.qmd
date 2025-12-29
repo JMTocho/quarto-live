@@ -1,0 +1,118 @@
+---
+title: "Reporte DNRPA 2025"
+engine: knitr
+
+format:
+  live-html:
+    theme: cosmo
+  html:
+    theme: cosmo
+
+webr:
+  packages: ['ggplot2','dplyr','reactable','geoAr','sf','mapgl']
+
+resources:
+  - data
+---
+
+
+# DNRPA. Inscripciones iniciales de autos - 2025
+
+## Inscripciones iniciales de autos registradas en los Registros Seccionales de la Propiedad del Automotor y su primer titular del año 2025
+
+#### Fuente dataset: https://datos.gob.ar/dataset/justicia-inscripciones-iniciales-autos/archivo/justicia_a7ccb7c5-5523-41ab-a3e3-c8364134c7ba
+
+# Exploración de los datos
+
+```{webr}
+#| warning: false
+library(dplyr)
+library(ggplot2)
+library(reactable)
+library(sf)
+library(geoAr)
+library(mapgl)
+
+data <- read.csv("data/dnrpa-iiautos-202511.csv")
+geo_prov <- readRDS("data/provincias.RData")
+str(data)
+```
+
+# Vista totales por tipo de trámite
+
+```{webr}
+df_tramite <- as.data.frame(table(data$tramite_tipo)) %>%
+  rename(Tramite = Var1, Cantidad = Freq) %>%
+  arrange(desc(Cantidad))
+
+ggplot(df_tramite, aes(x = Cantidad, y = reorder(Tramite, Cantidad))) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = Cantidad), hjust = -0.1, size = 3) + # Agrega el número al final
+  labs(title = "Tipos de Trámite", x = "Frecuencia", y = NULL) +
+  theme_minimal() +
+  scale_x_continuous(expand = expansion(mult = c(0, .15))) # Da espacio al texto
+```
+
+# Top 10 marcas o las que quiera ver....
+
+```{webr}
+# 1. Preparar los datos del Top 10
+top_marcas <- data %>%
+  count(automotor_marca_descripcion, sort = TRUE) %>%
+  head(10) %>%
+  rename(Marca = automotor_marca_descripcion, Cantidad = n)
+
+# 2. Crear la tabla interactiva con reactable
+reactable(
+  top_marcas,
+  columns = list(
+    Cantidad = colDef(
+      align = "center",
+      format = colFormat(separators = TRUE),
+      style = list(fontWeight = "bold", color = "#2c3e50")
+    ),
+    Marca = colDef(
+      style = list(textTransform = "uppercase")
+    )
+  ),
+  bordered = TRUE,
+  highlight = TRUE,
+  striped = TRUE,
+  compact = TRUE,
+  theme = reactableTheme(
+    borderColor = "#dfe2e5",
+    stripedColor = "#f6f8fa",
+    highlightColor = "#eab676"
+  )
+)
+```
+
+# Vista por provincias...
+
+```{webr}
+df_provincias <- data |>
+     group_by(registro_seccional_provincia) |>
+     summarise(Cantidad = n())
+colnames(df_provincias)[1] <- "Provincia"
+
+prov <- left_join(df_provincias,geo_prov,by = "Provincia") |>
+  st_as_sf()
+
+maplibre_view(prov, column = "Cantidad")
+```
+
+# Totales por género del titular
+
+```{webr}
+df_genero <- data %>%
+  count(titular_genero, name = "Cantidad") %>%
+  arrange(desc(Cantidad))
+
+ggplot(df_genero, aes(x = reorder(titular_genero, -Cantidad), y = Cantidad, fill = titular_genero)) +
+  geom_col() +
+  labs(title = "Titulares por género",
+       x = "Género",
+       y = "Cantidad") +
+  theme_minimal() +
+  guides(fill = "none") # Esto quita la leyenda si no la necesitas
+```
